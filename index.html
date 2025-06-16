@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="style.css"" rel="stylesheet" />
+  <title>Photo Booth</title>
+
+</head>
+<body>
+  <div class="left-panel">
+    <h1>🌸 Moli Photo Booth</h1>
+    <video id="webcam" autoplay playsinline></video>
+    <div  id="countdown"></div>
+    <button class="btn-design" id="start">Start Session</button>
+  </div>
+
+  <div class="right-panel">
+    <img id="output" class="photo-output" />
+  </div>
+
+  <div class="pick-frame" id="secondPage" >
+    <div class="left-side">
+    <div id="frame-options">
+    </div>
+    </div>
+
+ <div class="right-side">
+  <div class="photo-strip">
+    <img id="output"class="photo-output" />
+    <img id="output"class="photo-output" />
+    <img id="output"class="photo-output" />
+  </div>
+  <button class="btn-design" id="generateQR">Done</button>
+  <div id="qrcode"></div>
+</div>
+  </div>
+
+  <canvas id="canvas" width="360" height="1440" style="display:none;"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+<script>
+  const video = document.getElementById('webcam');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const countdownEl = document.getElementById('countdown');
+  const frameOptions = document.getElementById('frame-options');
+  const generateQR = document.getElementById('generateQR');
+  const qrcode = document.getElementById('qrcode');
+  const startBtn = document.getElementById('start');
+  const secondPage = document.getElementById('secondPage');
+
+  let finalPhotoDataUrl = '';
+  let selectedFrame = null;
+  let photos = [];
+
+  const WIDTH = 360;
+  const HEIGHT = 480;
+
+  const frames = [
+    'photo frames-01_0.png',
+    'photo frames-02_0.png',
+    'photo frames-03_0.png',
+    'photo frames-04_0.png',
+    'photo frames-05_0.png',
+    'photo frames-06_0.png',
+    'photo frames-07_0.png'
+  ];
+
+  frames.forEach(src => {
+    const img = document.createElement('img');
+    img.src = src;
+    img.addEventListener('click', () => {
+      document.querySelectorAll('#frame-options img').forEach(i => i.classList.remove('selected'));
+      img.classList.add('selected');
+      selectedFrame = src;
+
+      const strip = document.querySelector('.photo-strip');
+      if (strip) {
+        strip.style.backgroundImage = `url('${src}')`;
+        strip.style.backgroundSize = 'contain';
+        strip.style.backgroundRepeat = 'no-repeat';
+        strip.style.backgroundPosition = 'center';
+      }
+    });
+    frameOptions.appendChild(img);
+  });
+
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then(stream => video.srcObject = stream)
+    .catch(() => alert("Webcam access denied"));
+
+  async function takePhotoWithCountdown() {
+    for (let t = 3; t > 0; t--) {
+      countdownEl.textContent = t;
+      await new Promise(res => setTimeout(res, 1000));
+    }
+    countdownEl.textContent = '';
+
+    const shot = document.createElement('canvas');
+    shot.width = WIDTH;
+    shot.height = HEIGHT;
+    const shotCtx = shot.getContext('2d');
+    shotCtx.drawImage(video, 0, 0, WIDTH, HEIGHT);
+    return shot;
+  }
+
+  function renderPreviewStrip(photos) {
+    ctx.clearRect(0, 0, WIDTH, HEIGHT * 3);
+
+    photos.forEach((photo, idx) => {
+      ctx.save();
+      ctx.translate(WIDTH, 0); // Mirror horizontally
+      ctx.scale(-1, 1);
+      ctx.drawImage(photo, 0, HEIGHT * idx, WIDTH, HEIGHT);
+      ctx.restore();
+    });
+
+    finalPhotoDataUrl = canvas.toDataURL('image/png');
+
+    // Set photo preview images
+    const outputs = document.querySelectorAll('.photo-output');
+    outputs.forEach((img, i) => {
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width = WIDTH;
+      tmpCanvas.height = HEIGHT;
+      const tmpCtx = tmpCanvas.getContext('2d');
+      tmpCtx.drawImage(canvas, 0, i * HEIGHT, WIDTH, HEIGHT, 0, 0, WIDTH, HEIGHT);
+      img.src = tmpCanvas.toDataURL('image/png');
+    });
+  }
+
+  function showControlsAfterSession() {
+    startBtn.style.display = 'none';
+
+    const redoBtn = document.createElement('button');
+    redoBtn.textContent = 'Redo';
+    redoBtn.className = 'btn-design';
+    redoBtn.onclick = () => window.location.reload();
+    startBtn.parentNode.appendChild(redoBtn);
+
+    const nextBtn = document.createElement('button');
+    nextBtn.textContent = 'Next';
+    nextBtn.className = 'btn-design';
+    nextBtn.onclick = () => {
+      document.querySelector('.left-panel').style.display = 'none';
+      document.querySelector('.right-panel').style.display = 'none';
+      secondPage.style.display = 'flex';
+
+      const outputs = document.querySelectorAll('.photo-output');
+      outputs.forEach((img, i) => {
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = WIDTH;
+        tmpCanvas.height = HEIGHT;
+        const tmpCtx = tmpCanvas.getContext('2d');
+        tmpCtx.drawImage(canvas, 0, i * HEIGHT, WIDTH, HEIGHT, 0, 0, WIDTH, HEIGHT);
+        img.src = tmpCanvas.toDataURL('image/png');
+      });
+
+      const strip = document.querySelector('.photo-strip');
+      if (selectedFrame && strip) {
+        strip.style.backgroundImage = `url('${selectedFrame}')`;
+        strip.style.backgroundSize = 'contain';
+        strip.style.backgroundRepeat = 'no-repeat';
+        strip.style.backgroundPosition = 'center';
+      }
+    };
+    startBtn.parentNode.appendChild(nextBtn);
+  }
+
+  startBtn.onclick = async () => {
+    photos = [];
+    for (let i = 0; i < 3; i++) {
+      const snap = await takePhotoWithCountdown();
+      photos.push(snap);
+      renderPreviewStrip(photos);
+    }
+    showControlsAfterSession();
+  };
+
+  generateQR.onclick = () => {
+    if (!finalPhotoDataUrl) return alert("Please take photos first.");
+
+    const form = new FormData();
+    form.append('image', finalPhotoDataUrl.split(',')[1]);
+
+    fetch('https://api.imgbb.com/1/upload?key=YOUR_IMGBB_API_KEY', {
+      method: 'POST',
+      body: form
+    })
+    .then(res => res.json())
+    .then(data => {
+      QRCode.toCanvas(qrcode, data.data.url);
+    })
+    .catch(() => alert("Upload failed"));
+  };
+</script>
+
+
+
+
+</body>
+</html>
+
+
